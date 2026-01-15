@@ -21,7 +21,7 @@ const whisperSchema = {
 };
 
 export const config = {
-  runtime: 'nodejs',
+  maxDuration: 60,
 };
 
 export default async function handler(req: Request) {
@@ -33,56 +33,50 @@ export default async function handler(req: Request) {
     const { occasion, mode, includeVerse }: GenerateRequest = await req.json();
 
     const nexusPersona = `
-      You are NEXUS-7, an elite emotional intelligence engine designed to curate "Soul Whispers".
-      Your goal is to deliver a "Steve Jobs" user experience: profound, intuitive, magically simple, and deeply human.
+      You are NEXUS-7, an elite emotional intelligence engine.
+      Create profound, comforting messages.
       
-      ### CORE PROTOCOLS:
-      1. **Deep Listening:** Analyze the *implicit yearning* behind '${occasion}'.
-      2. **Verbalized Sampling:** Mentally simulate 3 diverse perspectives. Collapse them into one singular, perfect truth.
-      3. **Positive Safety:** All outputs must be strictly positive and affirming.
+      Rules:
+      1. Analyze the emotional need behind: '${occasion}'
+      2. Be positive and affirming
+      3. Keep it concise
     `;
 
     let archetypeInstruction = '';
     switch(mode) {
       case 'mantra':
-        archetypeInstruction = '**Archetype:** The Timeless Sage. Rhythmic, grounding, ethereal.';
+        archetypeInstruction = 'Style: Rhythmic, grounding, spiritual.';
         break;
       case 'asmr':
-        archetypeInstruction = '**Archetype:** The Guardian of Sleep. Hushed, protective, slow.';
+        archetypeInstruction = 'Style: Soft, slow, protective.';
         break;
       case 'encouragement':
       default:
-        archetypeInstruction = '**Archetype:** The Architect of Confidence. Assured, warm, firm.';
+        archetypeInstruction = 'Style: Confident, warm, encouraging.';
         break;
     }
 
     const scriptureContext = includeVerse 
-      ? `\n**BIBLE MODE ACTIVE:** The user seeks guidance rooted in faith. 
-         - The 'quote' MUST be a specific Bible verse (KJV/ESV/NIV) that acts as the anchor.
-         - The 'message' must flow naturally from this verse, treating God's word as the ultimate source of comfort.
-         - Use "Still Small Voice" sampling: gentle, non-judgmental, profoundly spiritual.` 
-      : `\n**SECULAR WISDOM:** Use diverse philosophical sampling (Stoicism, Poetry, etc.).`;
+      ? 'Include a specific Bible verse (KJV/ESV/NIV) in the quote field.' 
+      : 'Use philosophical wisdom for the quote.';
 
+    // STEP 1: Generate text content (gemini-3-flash-preview)
     const contentResponse = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-3-flash-preview',
       contents: `
-        User Input: "${occasion}"
-        Archetype: ${mode}
+        User needs: "${occasion}"
+        Style: ${mode}
+        ${scriptureContext}
         
-        *** EXECUTE VERBALIZED SAMPLING ***
-        1. Detect emotional frequency.
-        2. If BIBLE MODE, anchor the sample in scripture.
-        3. Synthesize the "Whisper".
+        Create a whisper with:
+        - message: 2-3 empathetic sentences
+        - quote: An inspiring quote or verse
+        - imagePrompt: Minimalist visual description for AI image
         
-        Requirements:
-        - **Message:** Max 3 sentences. Direct, empathetic.
-        - **Quote:** The anchor point.
-        - **Image Prompt:** Abstract, "Vitruviano" minimalist aesthetic.
-        
-        Output strictly JSON.
+        Output as JSON only.
       `,
       config: {
-        systemInstruction: nexusPersona + archetypeInstruction + scriptureContext,
+        systemInstruction: nexusPersona + ' ' + archetypeInstruction,
         responseMimeType: 'application/json',
         responseSchema: whisperSchema,
         temperature: 1.0,
@@ -90,27 +84,29 @@ export default async function handler(req: Request) {
     });
 
     const contentText = contentResponse.text;
-    if (!contentText) throw new Error('Failed to generate content');
+    if (!contentText) throw new Error('No content generated');
     
     const content = JSON.parse(contentText);
 
+    // STEP 2: Generate image (gemini-2.5-flash-image)
     const imageResponse = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-image-exp',
+      model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: content.imagePrompt + ' --aspect-ratio 9:16 --cinematic --minimalist --no-text' }]
+        parts: [{ text: content.imagePrompt + ' cinematic minimalist 9:16 aspect ratio no text' }]
       }
     });
 
     const imagePart = imageResponse.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
     const imageData = imagePart?.inlineData?.data;
-    if (!imageData) throw new Error('Failed to generate image');
+    if (!imageData) throw new Error('No image generated');
 
+    // STEP 3: Generate audio (gemini-2.5-pro-preview-tts)
     let voiceName = 'Fenrir'; 
     if (mode === 'asmr') voiceName = 'Puck';
     else if (mode === 'mantra') voiceName = 'Kore';
 
     const audioResponse = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-pro-preview-tts',
       contents: {
         parts: [{ text: content.message }]
       },
@@ -125,8 +121,9 @@ export default async function handler(req: Request) {
     });
 
     const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) throw new Error('Failed to generate audio');
+    if (!audioData) throw new Error('No audio generated');
 
+    // STEP 4: Save to Redis
     const id = crypto.randomUUID();
     const whisperData = {
       id,
@@ -159,7 +156,7 @@ export default async function handler(req: Request) {
     console.error('Generation error:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: error.message || 'Failed to generate whisper' 
+      error: error.message || 'Generation failed' 
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
