@@ -22,7 +22,6 @@ const whisperSchema = {
 
 export const config = {
   maxDuration: 300,
-  runtime: 'nodejs',
 };
 
 export default async function handler(req: any, res: any) {
