@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia'
+  apiVersion: '2025-02-24.acacia'
 });
 
 export const config = {
@@ -23,10 +23,8 @@ export default async function handler(req: Request) {
       });
     }
 
-    // Get the origin for redirect URLs
     const origin = new URL(req.url).origin;
 
-    // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -36,9 +34,8 @@ export default async function handler(req: Request) {
             product_data: {
               name: 'WhisperBack - Keep Forever',
               description: 'Download your personalized audio message and shareable link',
-              images: [`${origin}/og-image.png`],
             },
-            unit_amount: 299, // $2.99
+            unit_amount: 299,
           },
           quantity: 1,
         },
@@ -49,8 +46,6 @@ export default async function handler(req: Request) {
       metadata: {
         whisperId
       },
-      // Enable automatic email receipt
-      customer_email: undefined, // Will be collected during checkout
     });
 
     return new Response(JSON.stringify({ 

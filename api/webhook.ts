@@ -1,9 +1,11 @@
 import Stripe from 'stripe';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia'
+  apiVersion: '2025-02-24.acacia'
 });
+
+const redis = Redis.fromEnv();
 
 export const config = {
   runtime: 'edge',
@@ -28,22 +30,20 @@ export default async function handler(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET || ''
     );
 
-    // Handle successful payment
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       const whisperId = session.metadata?.whisperId;
 
       if (whisperId) {
-        // Update the whisper to mark as paid and extend expiry to 1 year
-        const whisperData = await kv.get(`whisper:${whisperId}`);
+        const whisperData = await redis.get(`whisper:${whisperId}`) as any;
         
         if (whisperData) {
-          await kv.set(`whisper:${whisperId}`, {
+          await redis.set(`whisper:${whisperId}`, {
             ...whisperData,
             isPaid: true,
             paidAt: Date.now(),
             customerEmail: session.customer_details?.email
-          }, { ex: 31536000 }); // 1 year
+          }, { ex: 31536000 });
         }
       }
     }
