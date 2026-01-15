@@ -1,7 +1,9 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
 export default async function handler(req: Request) {
@@ -20,16 +22,17 @@ export default async function handler(req: Request) {
       });
     }
 
-    const whisperData = await kv.get(`whisper:${id}`) as any;
-
-    if (!whisperData) {
+    const whisperDataStr = await redis.get(`whisper:${id}`);
+    
+    if (!whisperDataStr) {
       return new Response(JSON.stringify({ error: 'Whisper not found or expired' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Return data (including audio only if paid)
+    const whisperData = typeof whisperDataStr === 'string' ? JSON.parse(whisperDataStr) : whisperDataStr;
+
     return new Response(JSON.stringify({
       id: whisperData.id,
       message: whisperData.message,

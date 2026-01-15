@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type, Modality } from '@google/genai';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
-// Initialize with server-side API key
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' });
+const redis = Redis.fromEnv();
 
 interface GenerateRequest {
   occasion: string;
@@ -21,7 +21,7 @@ const whisperSchema = {
 };
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
 };
 
 export default async function handler(req: Request) {
@@ -32,7 +32,6 @@ export default async function handler(req: Request) {
   try {
     const { occasion, mode, includeVerse }: GenerateRequest = await req.json();
 
-    // STEP 1: Generate text content
     const nexusPersona = `
       You are NEXUS-7, an elite emotional intelligence engine designed to curate "Soul Whispers".
       Your goal is to deliver a "Steve Jobs" user experience: profound, intuitive, magically simple, and deeply human.
@@ -65,7 +64,7 @@ export default async function handler(req: Request) {
       : `\n**SECULAR WISDOM:** Use diverse philosophical sampling (Stoicism, Poetry, etc.).`;
 
     const contentResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash-exp',
       contents: `
         User Input: "${occasion}"
         Archetype: ${mode}
@@ -95,9 +94,8 @@ export default async function handler(req: Request) {
     
     const content = JSON.parse(contentText);
 
-    // STEP 2: Generate image
     const imageResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-2.0-flash-image-exp',
       contents: {
         parts: [{ text: content.imagePrompt + ' --aspect-ratio 9:16 --cinematic --minimalist --no-text' }]
       }
@@ -107,13 +105,12 @@ export default async function handler(req: Request) {
     const imageData = imagePart?.inlineData?.data;
     if (!imageData) throw new Error('Failed to generate image');
 
-    // STEP 3: Generate preview audio (lower quality/shorter for free preview)
     let voiceName = 'Fenrir'; 
     if (mode === 'asmr') voiceName = 'Puck';
     else if (mode === 'mantra') voiceName = 'Kore';
 
     const audioResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-tts',
+      model: 'gemini-2.0-flash-exp',
       contents: {
         parts: [{ text: content.message }]
       },
@@ -130,7 +127,6 @@ export default async function handler(req: Request) {
     const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!audioData) throw new Error('Failed to generate audio');
 
-    // STEP 4: Generate unique ID and store in Vercel KV
     const id = crypto.randomUUID();
     const whisperData = {
       id,
@@ -145,10 +141,8 @@ export default async function handler(req: Request) {
       createdAt: Date.now()
     };
 
-    // Store for 7 days (free users get 7-day access, paid get permanent)
-    await kv.set(`whisper:${id}`, whisperData, { ex: 604800 });
+    await redis.set(`whisper:${id}`, JSON.stringify(whisperData), { ex: 604800 });
 
-    // Return preview data (base64 encoded)
     return new Response(JSON.stringify({
       success: true,
       id,
@@ -164,6 +158,7 @@ export default async function handler(req: Request) {
   } catch (error: any) {
     console.error('Generation error:', error);
     return new Response(JSON.stringify({ 
+      success: false,
       error: error.message || 'Failed to generate whisper' 
     }), {
       status: 500,
