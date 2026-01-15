@@ -22,15 +22,16 @@ const whisperSchema = {
 
 export const config = {
   maxDuration: 300,
+  runtime: 'nodejs',
 };
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { occasion, mode, includeVerse }: GenerateRequest = await req.json();
+    const { occasion, mode, includeVerse }: GenerateRequest = req.body;
 
     const nexusPersona = `
       You are NEXUS-7, an elite emotional intelligence engine.
@@ -136,26 +137,20 @@ export default async function handler(req: Request) {
 
     await redis.set(`whisper:${id}`, JSON.stringify(whisperData), { ex: 604800 });
 
-    return new Response(JSON.stringify({
+    return res.status(200).json({
       success: true,
       id,
       message: content.message,
       quote: content.quote,
       imageUrl: `data:image/png;base64,${imageData}`,
       audioBase64: audioData,
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (error: any) {
     console.error('Generation error:', error);
-    return new Response(JSON.stringify({ 
+    return res.status(500).json({ 
       success: false,
       error: error.message || 'Generation failed' 
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
