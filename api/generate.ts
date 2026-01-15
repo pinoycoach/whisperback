@@ -21,7 +21,7 @@ const whisperSchema = {
 };
 
 export const config = {
-  maxDuration: 300,  // NEW - 5 minutes (max allowed on Vercel free tier)
+  maxDuration: 300,
 };
 
 export default async function handler(req: Request) {
@@ -60,7 +60,6 @@ export default async function handler(req: Request) {
       ? 'Include a specific Bible verse (KJV/ESV/NIV) in the quote field.' 
       : 'Use philosophical wisdom for the quote.';
 
-    // STEP 1: Generate text content (gemini-3-flash-preview)
     const contentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `
@@ -88,7 +87,6 @@ export default async function handler(req: Request) {
     
     const content = JSON.parse(contentText);
 
-    // STEP 2: Generate image (gemini-2.5-flash-image)
     const imageResponse = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
@@ -100,7 +98,6 @@ export default async function handler(req: Request) {
     const imageData = imagePart?.inlineData?.data;
     if (!imageData) throw new Error('No image generated');
 
-    // STEP 3: Generate audio (gemini-2.5-pro-preview-tts)
     let voiceName = 'Fenrir'; 
     if (mode === 'asmr') voiceName = 'Puck';
     else if (mode === 'mantra') voiceName = 'Kore';
@@ -123,7 +120,6 @@ export default async function handler(req: Request) {
     const audioData = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!audioData) throw new Error('No audio generated');
 
-    // STEP 4: Save to Redis
     const id = crypto.randomUUID();
     const whisperData = {
       id,
