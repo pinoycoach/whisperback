@@ -21,7 +21,7 @@ const whisperSchema = {
 };
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,  // NEW - 5 minutes (max allowed on Vercel free tier)
 };
 
 export default async function handler(req: Request) {
